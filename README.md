@@ -19,7 +19,7 @@ This repository contains a full end‑to‑end RAG pipeline and a Vite + React U
 
 ### 1) Clone the repo
 ```bash
-git clone <your-fork-or-https-url>
+git clone https://github.com/Jacob-Lapkin/artos-takehome
 cd ArtosTakehome
 ```
 

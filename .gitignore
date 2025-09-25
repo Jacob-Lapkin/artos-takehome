@@ -1,0 +1,48 @@
+# Root .gitignore for backend (Python) and frontend (Vite)
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.*
+!.env.example
+!*/.env.example
+
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+*.cover
+htmlcov/
+build/
+dist/
+*.egg-info/
+*.egg
+venv/
+.venv/
+env/
+.env/
+instance/
+logs/
+*.log
+
+# Backend data folders (keep folder, ignore contents)
+ArtosBackend/data/**
+!ArtosBackend/data/.gitkeep
+
+# Frontend / Vite
+node_modules/
+dist/
+.vite/
+.cache/
+coverage/
+.eslintcache
+

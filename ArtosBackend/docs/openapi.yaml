@@ -1,0 +1,537 @@
+# OpenAPI specification for Artos Backend Flask API
+openapi: 3.0.3
+info:
+  title: Artos Backend API
+  version: 1.0.0
+  description: |
+    REST API for uploading documents, ingesting into a vector store,
+    searching, generating sectioned outputs, and retrieving run artifacts.
+servers:
+  - url: http://127.0.0.1:5000
+    description: Local development
+tags:
+  - name: Health
+  - name: Upload
+  - name: Ingest
+  - name: Search
+  - name: Generate
+  - name: Runs
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /upload:
+    post:
+      tags: [Upload]
+      summary: Upload a source document
+      description: |
+        Accepts a multipart file (.pdf or .docx). On success, persists the file and
+        returns metadata including a generated `file_id` used by subsequent endpoints.
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required: [file]
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          description: Validation error (missing file, type/size constraints)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /ingest:
+    post:
+      tags: [Ingest]
+      summary: Ingest an uploaded PDF into the vector store
+      description: |
+        Creates an index from a previously uploaded PDF identified by `file_id`.
+        Returns index metadata including chunk counts and enhancement stats.
+      operationId: ingestFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestRequest'
+      responses:
+        '200':
+          description: Ingestion started/completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestResponse'
+        '400':
+          description: Bad request or unsupported file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Uploaded file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Processing failure while building the index
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /search:
+    post:
+      tags: [Search]
+      summary: Search index for relevant chunks
+      description: Performs retrieval over an index and returns top hits for debugging/tuning.
+      operationId: search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResponse'
+        '400':
+          description: Missing index_id or query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Retrieval error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /generate:
+    post:
+      tags: [Generate]
+      summary: Generate sectioned outputs using retrieval-augmented LLMs
+      description: |
+        For the given `file_id`, runs retrieval per requested section, drafts and self-checks
+        outputs, persists artifacts, and returns a run identifier and final texts.
+      operationId: generate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateRequest'
+      responses:
+        '200':
+          description: Generation completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateResponse'
+        '400':
+          description: Missing file_id or invalid options
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No index found for file_id (ingest first)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Generation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /refine:
+    post:
+      tags: [Generate]
+      summary: Refine an existing run or generate+refine in one call
+      operationId: refine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/RefineRequest'
+                - $ref: '#/components/schemas/GenerateRefineRequest'
+      responses:
+        '200':
+          description: Refinement completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefineResponse'
+        '400':
+          description: Missing run_id or invalid run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Refinement error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /runs/{run_id}:
+    get:
+      tags: [Runs]
+      summary: Get run status and section texts
+      operationId: getRun
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run status with any final texts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunStatusResponse'
+        '404':
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /runs/{run_id}/logs:
+    get:
+      tags: [Runs]
+      summary: Get consolidated logs for a run
+      operationId: getRunLogs
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Consolidated logs for the given run
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunLogsResponse'
+        '500':
+          description: Failed to build logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /runs/{run_id}/docx:
+    get:
+      tags: [Runs]
+      summary: Download generated DOCX for a run
+      operationId: getRunDocx
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: DOCX file generated for the run
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        '500':
+          description: Failed to render DOCX
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          description: Optional additional error details
+          nullable: true
+          type: string
+      required: [error]
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+      required: [status]
+
+    UploadResponse:
+      type: object
+      properties:
+        file_id:
+          type: string
+        filename:
+          type: string
+        mime:
+          type: string
+        size:
+          type: integer
+          format: int64
+      required: [file_id, filename, mime, size]
+
+    IngestRequest:
+      type: object
+      properties:
+        file_id:
+          type: string
+          description: Identifier returned by /upload
+      required: [file_id]
+
+    IngestResponse:
+      type: object
+      properties:
+        index_id:
+          type: string
+        n_chunks:
+          type: integer
+          format: int32
+        store:
+          type: string
+          example: faiss
+        pages:
+          type: integer
+          format: int32
+        created_at:
+          type: integer
+          format: int64
+          description: Unix timestamp (seconds)
+        enhancement_stats:
+          type: object
+          properties:
+            toc_detected:
+              type: boolean
+            text_sections_enhanced:
+              type: integer
+              format: int32
+      required: [index_id, n_chunks, store, pages, created_at]
+
+    SearchRequest:
+      type: object
+      properties:
+        index_id:
+          type: string
+        query:
+          type: string
+        section:
+          type: string
+          nullable: true
+          description: Optional section filter
+        k:
+          type: integer
+          default: 8
+          minimum: 1
+        mode:
+          type: string
+          description: Retrieval mode (e.g., dense)
+          default: dense
+        search_type:
+          type: string
+          description: Search algorithm type (e.g., mmr)
+          default: mmr
+        search_kwargs:
+          type: object
+          additionalProperties: true
+          description: Extra retrieval search parameters
+      required: [index_id, query]
+
+    SearchHit:
+      type: object
+      properties:
+        chunk_id:
+          type: string
+        page:
+          type: integer
+          format: int32
+        section_path:
+          type: string
+          nullable: true
+        heading_norm:
+          type: string
+          nullable: true
+        preview:
+          type: string
+          description: First ~300 chars of text
+        score:
+          type: number
+          format: float
+        source_scores:
+          type: object
+          additionalProperties:
+            type: number
+            format: float
+      required: [chunk_id, score]
+
+    SearchResponse:
+      type: object
+      properties:
+        hits:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchHit'
+      required: [hits]
+
+    GenerateRequest:
+      type: object
+      properties:
+        file_id:
+          type: string
+        sections:
+          type: array
+          description: Sections to generate; defaults to [Purpose, Procedures, Risks, Benefits]
+          items:
+            type: string
+        options:
+          type: object
+          properties:
+            sync:
+              type: boolean
+              default: true
+            mode:
+              type: string
+              description: Retrieval mode (e.g., dense)
+              default: dense
+            use_section_filter:
+              type: boolean
+              default: false
+      required: [file_id]
+
+    SectionResult:
+      type: object
+      properties:
+        text:
+          type: string
+
+    GenerateResponse:
+      type: object
+      properties:
+        run_id:
+          type: string
+        status:
+          type: string
+          example: succeeded
+        sections:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SectionResult'
+      required: [run_id, status, sections]
+
+    RefineRequest:
+      type: object
+      properties:
+        run_id:
+          type: string
+      required: [run_id]
+
+    GenerateRefineRequest:
+      type: object
+      properties:
+        file_id:
+          type: string
+        sections:
+          type: array
+          items:
+            type: string
+        options:
+          type: object
+          properties:
+            mode:
+              type: string
+              default: dense
+            use_section_filter:
+              type: boolean
+              default: false
+      required: [file_id]
+
+    RefineResponse:
+      type: object
+      properties:
+        run_id:
+          type: string
+        status:
+          type: string
+          example: refined
+        sections:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SectionResult'
+        queries:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+      required: [run_id, status, sections]
+
+    RunStatusResponse:
+      type: object
+      properties:
+        run_id:
+          type: string
+        status:
+          type: string
+        sections:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              text:
+                type: string
+              warnings:
+                type: array
+                items:
+                  type: string
+      required: [run_id, status]
+
+    RunLogsResponse:
+      type: object
+      additionalProperties: true
